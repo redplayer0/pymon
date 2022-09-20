@@ -1,5 +1,6 @@
 import curses
 from mapdata import data
+from trainer import Trainer
 
 class Game:
     # blocks = ["#", "_", "|", "=", "$", "^"]
@@ -11,18 +12,14 @@ class Game:
         self.frames = 0
         # Set lastkey to empty
         self.lastkey = ""
-        # Player attributes
-        self.pl = "@"
-        self.x = 0
-        self.tx = 0
-        self.y = 0
-        self.ty = 0
-        self.under = ""
-        self.state = "walk"
-        self.mons = []
         # Map related
         self.curmap = ""
         self.previousmap = ""
+
+    def add_player(self, player):
+        self.player = player
+        self.player.world = self
+        self.player.win = self.stdscr
 
     def init_curses(self):
         self.stdscr = curses.initscr()
@@ -52,15 +49,6 @@ class Game:
         self.stdscr.move(line, 0)
         self.stdscr.deleteln()
 
-    def spawn_player(self, y, x):
-        self.x = x
-        self.tx = x
-        self.y = y
-        self.ty = y
-        self.under = self.get_from(y, x)
-        self.put_at(y, x, self.pl)
-        self.refresh()
-
     def load_map(self, mapname):
         self.previousmap = self.curmap
         self.curmap = mapname
@@ -80,66 +68,39 @@ class Game:
 
     def check_tile(self):
         k = self.lastkey
+        x = self.player.x
+        y = self.player.y
         match k:
             case "d":
-                self.tx += 1
+                x += 1
             case "a":
-                self.tx -= 1
+                x -= 1
             case "w":
-                self.ty -= 1
+                y -= 1
             case "s":
-                self.ty += 1
+                y += 1
 
-        tile_type = self.get_from(self.ty, self.tx)
-        tile = (self.ty, self.tx)
+        tile_type = self.get_from(y, x)
+        tile = (y, x)
 
-        match tile_type:
-            case "$":
-                txt = data[self.curmap][tile_type][tile]
-                self.put_at(15, 0, txt)
-            case ".":
-                self.move_player(tile_type)
-                self.delete_ln(15)
-            case ",":
-                self.move_player(tile_type)
-                self.delete_ln(15)
-            case "*":
-                self.move_player(tile_type)
-                self.delete_ln(15)
-
-        if tile in data[self.curmap]["warps"]:
+        if tile_type == "$":
+            txt = data[self.curmap][tile_type][tile]
+            self.put_at(15, 0, txt)
+        elif tile_type == ".":
+            self.player.move(y, x, tile_type)
+            self.delete_ln(15)
+        elif tile in data[self.curmap]["warps"]:
             self.warp_player(tile)
-
-        # If target is npc do dialog
-        if tile_type in data[self.curmap]["npcs"]:
+        elif tile_type in data[self.curmap]["npcs"]:
             self.dialog(data[self.curmap]["npcs"][tile_type])
-
-        self.tx = self.x
-        self.ty = self.y
-
-    def move_player(self, tile_type):
-        if self.state == "talk":
-            return
-        # Replace player with the tile under him
-        self.put_at(self.y, self.x, self.under)
-        
-        # Update player's position
-        self.x = self.tx
-        self.y = self.ty
-
-        # Update tile under player
-        self.under = tile_type
-        # Render player
-        self.put_at(self.y, self.x, self.pl)
-        self.refresh()
 
     def warp_player(self, tile):
         target = data[self.curmap]["warps"][tile]
         self.load_map(target[0])
-        self.spawn_player(target[1][0], target[1][1])
+        self.player.spawn(target[1][0], target[1][1])
 
     def dialog(self, text):
-        self.state = "talk"
+        self.player.state = "talk"
         top = 15
         bot = 16
         lines = len(text) - 1
@@ -154,7 +115,7 @@ class Game:
                 self.delete_ln(top)
                 self.delete_ln(bot)
                 i += 1
-        self.state = "walk"
+        self.player.state = "walk"
         self.delete_ln(top)
         self.delete_ln(bot)
 
@@ -170,18 +131,21 @@ class Game:
             curses.endwin()
 
     def refresh(self):
-        self.put_at(0, 15, f"x: {self.x} y: {self.y}")
-        self.put_at(1, 15, f"tx: {self.tx} ty: {self.ty}")
+        self.put_at(0, 15, f"x: {self.player.x} y: {self.player.y}")
         self.put_at(14, 0, str(self.frames))
-        self.put_at(14, 10, self.state)
+        self.put_at(14, 10, self.player.state)
         self.frames += 1
         self.stdscr.refresh()
         curses.napms(30)
 
+
 world = Game()     
 world.init_curses()
+player = Trainer("red", "@")
+world.add_player(player)
 world.load_map("pallet")
-world.spawn_player(4, 4)
+world.player.spawn(4, 4)
+
 
 
 while True:
